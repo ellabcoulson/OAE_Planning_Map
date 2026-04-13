@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Southern California mCDR Sites + Airborne Hyperspectral Coverage</title>
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5f3ef; color: #1a1a1a; min-height: 100vh; padding: 24px;
+}
+.wrap { max-width: 1200px; margin: 0 auto; }
+h1 { font-size: 18px; font-weight: 600; margin-bottom: 2px; }
+.sub { font-size: 12px; color: #888; margin-bottom: 16px; line-height: 1.5; }
+.controls { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+.btn {
+  font-size: 11px; padding: 4px 12px; border-radius: 6px;
+  border: 1px solid #ccc; background: transparent; color: #555;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.btn:hover { background: #ece9e3; }
+.btn.active { background: #dbeeff; color: #185FA5; border-color: #85B7EB; }
+.btn.active-green { background: #E8F5E9; color: #2E7D32; border-color: #81C784; }
+.btn.active-orange { background: #FFF3E0; color: #E65100; border-color: #FFCC80; }
+.sep { width: 1px; height: 20px; background: #ddd; margin: 0 4px; }
+.main { display: grid; grid-template-columns: 1fr 280px; gap: 16px; align-items: start; }
+#map-container { position: relative; width: 100%; overflow: hidden; border-radius: 10px; }
+.panel {
+  border: 1px solid #ddd; border-radius: 10px; background: #fff;
+  padding: 14px; font-size: 12px;
+}
+.panel-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #1a1a1a; }
+.legend-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 11px; color: #555; }
+.leg-sq { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+.leg-circ { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+#detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee; display: none; }
+#detail-name { font-size: 13px; font-weight: 600; color: #1a1a1a; margin-bottom: 6px; }
+.detail-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-size: 11px; }
+.detail-grid .label { color: #888; }
+.detail-grid .val { color: #1a1a1a; font-weight: 500; }
+.bar-bg { height: 6px; background: #eee; border-radius: 3px; margin-top: 2px; }
+.bar-fill { height: 6px; border-radius: 3px; }
+.score-row { margin-top: 5px; }
+.score-label { font-size: 10px; color: #888; }
+.mpa-tag {
+  display: inline-block; font-size: 10px; padding: 1px 6px;
+  border-radius: 4px; background: #FFF3E0; color: #E65100;
+  border: 1px solid #FFCC80; margin-top: 4px;
+}
+.tooltip {
+  position: absolute; pointer-events: none; background: rgba(255,255,255,0.95);
+  border: 1px solid #ddd; border-radius: 6px; padding: 6px 10px;
+  font-size: 11px; box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  opacity: 0; transition: opacity 0.12s; z-index: 100;
+}
+.note { font-size: 10px; color: #aaa; margin-top: 10px; line-height: 1.5; }
+.tile-modal {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.65); display: none; z-index: 200;
+  align-items: center; justify-content: center;
+}
+.tile-modal.visible { display: flex; }
+.tile-modal-inner {
+  background: #fff; border-radius: 12px; padding: 16px; max-width: 90vw;
+  max-height: 90vh; box-shadow: 0 8px 40px rgba(0,0,0,0.3); position: relative;
+}
+.tile-modal-inner img { max-width: 85vw; max-height: 78vh; border-radius: 6px; display: block; }
+.tile-modal-title {
+  font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #1a1a1a;
+}
+.tile-modal-sub { font-size: 11px; color: #888; margin-bottom: 10px; }
+.tile-modal-close {
+  position: absolute; top: 10px; right: 14px; font-size: 20px;
+  color: #999; cursor: pointer; background: none; border: none; line-height: 1;
+}
+.tile-modal-close:hover { color: #333; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Southern California mCDR Suitability + Hyperspectral Coverage</h1>
+  <p class="sub">ASBPA nourishment sites (pipeline-scored) overlaid with MASS COAST airborne hyperspectral flightline (Oct 2023, 178 bands, 399-1005 nm)</p>
+
+  <div class="controls">
+    <span style="font-size:11px;color:#888;margin-right:2px">Color:</span>
+    <button class="btn active" onclick="setColor('suit')">Suitability</button>
+    <button class="btn" onclick="setColor('feas')">Feasibility</button>
+    <button class="btn" onclick="setColor('wscore')">Wave energy</button>
+    <button class="btn" onclick="setColor('cscore')">Chemistry</button>
+    <div class="sep"></div>
+    <button class="btn" id="btn-coverage" onclick="toggleCoverage()">Flight coverage</button>
+    <button class="btn" id="btn-mpa" onclick="toggleMPA()">MPA flags</button>
+    <button class="btn" id="btn-labels" onclick="toggleLabels()">Labels</button>
+    <button class="btn" id="btn-tilesonly" onclick="toggleTilesOnly()">Tiles only</button>
+  </div>
+
+  <div class="main">
+    <div id="map-container">
+      <div class="tooltip" id="tip"></div>
+    </div>
+    <div>
+      <div class="panel">
+        <div class="panel-title" id="legend-title">Final suitability</div>
+        <div id="legend-gradient"></div>
+        <div id="legend-labels" style="display:flex;justify-content:space-between;font-size:10px;color:#888;margin-top:2px">
+          <span>0</span><span>25</span><span>50</span><span>75</span>
+        </div>
+        <div style="margin-top:8px">
+          <div class="legend-row"><div class="leg-circ" style="border:2px solid #555;background:transparent"></div> Nourishment site (size = # events)</div>
+        </div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #eee">
+          <div style="font-size:11px;font-weight:500;color:#888;margin-bottom:4px">Hyperspectral</div>
+          <div class="legend-row"><div class="leg-sq" style="background:rgba(0,180,220,0.08);border:1px solid rgba(0,180,220,0.5)"></div> Flight coverage (click tile to view imagery)</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="panel-title">Site detail</div>
+        <div id="detail-empty" style="font-size:11px;color:#aaa">Click a site on the map</div>
+        <div id="detail">
+          <div id="detail-name"></div>
+          <div id="detail-scores"></div>
+          <div class="detail-grid" id="detail-grid"></div>
+          <div id="detail-mpa"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="note">
+          <strong>Flightline:</strong> MASS COAST 20231031, Scripps/UCSD.<br>
+          31 tiles, ~125K lines, Imperial Beach to Dana Point.<br>
+          178 bands, 399-1005 nm, ~2m spatial resolution.<br>
+          Site scores from pipeline: <code>scripts/</code>.
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="panel-title">Data sources</div>
+        <div id="datasources-empty" style="font-size:11px;color:#aaa">Click a site to see contributing datasets</div>
+        <div id="datasources" style="display:none;font-size:11px;line-height:1.7;color:#555">
+          <div id="ds-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tile-modal" id="tile-modal" onclick="closeTileModal(event)">
+  <div class="tile-modal-inner">
+    <button class="tile-modal-close" onclick="closeTileModal(event)">&times;</button>
+    <div class="tile-modal-title" id="tile-modal-title"></div>
+    <div class="tile-modal-sub" id="tile-modal-sub"></div>
+    <img id="tile-modal-img" src="" alt="Tile preview">
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script>
+const sites = [{"name": "Huntington Beach", "lat": 33.719, "lon": -118.0757, "vol": 22455111, "nev": 16, "src": "Catalina Schist (Catalina Island)", "dist": 49.3, "feas": 93.6, "whs": 2.15, "wscore": 98.0, "ph": 8.05, "cscore": 20.0, "suit": 69.4, "mpa": null, "hflag": "Standard", "suith": 69.4, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Bolsa Chica Non-Federal Beach", "lat": 33.6956, "lon": -118.05, "vol": 700000, "nev": 3, "src": "Catalina Schist (Catalina Island)", "dist": 48.2, "feas": 76.0, "whs": 2.07, "wscore": 89.1, "ph": 8.05, "cscore": 20.0, "suit": 61.0, "mpa": "Bolsa Chica Basin SMCA (No-Take)", "hflag": "High", "suith": 41.0, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Newport Beach", "lat": 33.6045, "lon": -117.9268, "vol": 11849726, "nev": 19, "src": "Corona Quarry (Representative)", "dist": 48.0, "feas": 92.4, "whs": 1.93, "wscore": 74.9, "ph": 8.05, "cscore": 20.0, "suit": 60.9, "mpa": null, "hflag": "Standard", "suith": 60.9, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Long Beach", "lat": 33.7602, "lon": -118.1568, "vol": 1263090, "nev": 3, "src": "Catalina Schist (Catalina Island)", "dist": 50.5, "feas": 75.8, "whs": 1.91, "wscore": 72.4, "ph": 8.05, "cscore": 20.0, "suit": 55.1, "mpa": null, "hflag": "Standard", "suith": 55.1, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Surfside-Sunset", "lat": 33.7282, "lon": -118.0845, "vol": 8293380, "nev": 5, "src": "Catalina Schist (Catalina Island)", "dist": 49.8, "feas": 87.1, "whs": 1.8, "wscore": 60.9, "ph": 8.05, "cscore": 20.0, "suit": 54.4, "mpa": null, "hflag": "Standard", "suith": 54.4, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "enhanced"}, {"name": "San Onofre", "lat": 33.378, "lon": -117.5722, "vol": 2609610, "nev": 7, "src": "Corona Quarry (Representative)", "dist": 52.9, "feas": 76.0, "whs": 1.8, "wscore": 61.2, "ph": 8.05, "cscore": 20.0, "suit": 51.2, "mpa": null, "hflag": "Standard", "suith": 51.2, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "enhanced"}, {"name": "San Pedro", "lat": 33.7101, "lon": -118.2827, "vol": 6012018, "nev": 5, "src": "Catalina Schist (Catalina Island)", "dist": 42.5, "feas": 100.0, "whs": 1.57, "wscore": 37.3, "ph": 8.05, "cscore": 20.0, "suit": 50.0, "mpa": null, "hflag": "Standard", "suith": 50.0, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "possible"}, {"name": "Solana Beach", "lat": 32.991, "lon": -117.2747, "vol": 1106000, "nev": 5, "src": "Corona Quarry (Representative)", "dist": 97.8, "feas": 38.7, "whs": 1.99, "wscore": 80.5, "ph": 8.05, "cscore": 20.0, "suit": 46.8, "mpa": null, "hflag": "Standard", "suith": 46.8, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Ocean Beach (San Fran)", "lat": 32.7507, "lon": -117.253, "vol": 1889125, "nev": 8, "src": "Ensenada Basalt Quarry (Baja)", "dist": 117.5, "feas": 33.5, "whs": 2.01, "wscore": 83.0, "ph": 8.05, "cscore": 20.0, "suit": 46.1, "mpa": null, "hflag": "Standard", "suith": 46.1, "slr_m": 0.96, "slr_hi": 2.02, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Imperial Beach", "lat": 32.5765, "lon": -117.1333, "vol": 10101490, "nev": 12, "src": "Ensenada Basalt Quarry (Baja)", "dist": 95.1, "feas": 46.2, "whs": 1.81, "wscore": 62.3, "ph": 8.05, "cscore": 20.0, "suit": 42.7, "mpa": null, "hflag": "Standard", "suith": 42.7, "slr_m": 0.96, "slr_hi": 2.02, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Pacific Beach", "lat": 32.7953, "lon": -117.257, "vol": 920000, "nev": 2, "src": "Catalina Schist (Catalina Island)", "dist": 116.3, "feas": 32.1, "whs": 1.88, "wscore": 69.9, "ph": 8.05, "cscore": 20.0, "suit": 41.1, "mpa": "South La Jolla SMR", "hflag": "High", "suith": 21.1, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Leucadia", "lat": 33.0861, "lon": -117.313, "vol": 132000, "nev": 1, "src": "Corona Quarry (Representative)", "dist": 86.7, "feas": 37.0, "whs": 1.79, "wscore": 60.2, "ph": 8.05, "cscore": 20.0, "suit": 39.2, "mpa": null, "hflag": "Standard", "suith": 39.2, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "enhanced"}, {"name": "Carlsbad", "lat": 33.1501, "lon": -117.3486, "vol": 12481002, "nev": 27, "src": "Corona Quarry (Representative)", "dist": 79.1, "feas": 56.3, "whs": 1.63, "wscore": 43.3, "ph": 8.05, "cscore": 20.0, "suit": 39.1, "mpa": null, "hflag": "Standard", "suith": 39.1, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "possible"}, {"name": "Doheny Beach (City of Dana Point)", "lat": 33.4568, "lon": -117.6728, "vol": 2366639, "nev": 6, "src": "Corona Quarry (Representative)", "dist": 46.6, "feas": 85.8, "whs": 1.36, "wscore": 14.3, "ph": 8.05, "cscore": 20.0, "suit": 37.7, "mpa": null, "hflag": "Standard", "suith": 37.7, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "possible"}, {"name": "Seal Beach", "lat": 33.7393, "lon": -118.1081, "vol": 3498280, "nev": 18, "src": "Catalina Schist (Catalina Island)", "dist": 49.9, "feas": 82.1, "whs": 1.36, "wscore": 14.3, "ph": 8.05, "cscore": 20.0, "suit": 36.6, "mpa": null, "hflag": "Standard", "suith": 36.6, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "possible"}, {"name": "San Clemente", "lat": 33.3574, "lon": -117.5388, "vol": 773000, "nev": 5, "src": "Corona Quarry (Representative)", "dist": 54.9, "feas": 67.2, "whs": 1.41, "wscore": 20.2, "ph": 8.05, "cscore": 20.0, "suit": 34.2, "mpa": null, "hflag": "Standard", "suith": 34.2, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "possible"}, {"name": "Coronado", "lat": 32.6852, "lon": -117.1905, "vol": 31794000, "nev": 8, "src": "Ensenada Basalt Quarry (Baja)", "dist": 108.2, "feas": 43.5, "whs": 1.57, "wscore": 36.4, "ph": 8.05, "cscore": 20.0, "suit": 32.8, "mpa": null, "hflag": "Standard", "suith": 32.8, "slr_m": 0.96, "slr_hi": 2.02, "slr_risk": "critical", "diss": "possible"}, {"name": "Ocean Beach", "lat": 32.7507, "lon": -117.253, "vol": 768127, "nev": 5, "src": "Ensenada Basalt Quarry (Baja)", "dist": 117.5, "feas": 31.4, "whs": 1.64, "wscore": 44.2, "ph": 8.05, "cscore": 20.0, "suit": 31.9, "mpa": null, "hflag": "Standard", "suith": 31.9, "slr_m": 0.96, "slr_hi": 2.02, "slr_risk": "critical", "diss": "possible"}, {"name": "Oceanside", "lat": 33.1936, "lon": -117.3844, "vol": 23626019, "nev": 57, "src": "Corona Quarry (Representative)", "dist": 73.8, "feas": 62.7, "whs": 1.38, "wscore": 17.2, "ph": 8.05, "cscore": 20.0, "suit": 31.8, "mpa": null, "hflag": "Standard", "suith": 31.8, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "possible"}, {"name": "Encinitas", "lat": 33.0471, "lon": -117.2984, "vol": 2442300, "nev": 13, "src": "Corona Quarry (Representative)", "dist": 91.2, "feas": 43.9, "whs": 1.49, "wscore": 28.6, "ph": 8.05, "cscore": 20.0, "suit": 30.2, "mpa": "Swami's SMCA", "hflag": "High", "suith": 10.2, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "possible"}, {"name": "Capistrano Beach", "lat": 33.4561, "lon": -117.6719, "vol": 325000, "nev": 3, "src": "Corona Quarry (Representative)", "dist": 46.6, "feas": 74.1, "whs": 1.22, "wscore": 0.0, "ph": 8.05, "cscore": 20.0, "suit": 29.2, "mpa": null, "hflag": "Standard", "suith": 29.2, "slr_m": 1.0, "slr_hi": 2.06, "slr_risk": "critical", "diss": "possible"}, {"name": "Mission Bay", "lat": 32.7759, "lon": -117.2535, "vol": 1241000, "nev": 4, "src": "Catalina Schist (Catalina Island)", "dist": 117.7, "feas": 32.4, "whs": 1.3, "wscore": 8.1, "ph": 8.05, "cscore": 20.0, "suit": 19.6, "mpa": null, "hflag": "Standard", "suith": 19.6, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "possible"}, {"name": "San Diego", "lat": 32.9689, "lon": -117.2694, "vol": 598000, "nev": 3, "src": "Corona Quarry (Representative)", "dist": 100.3, "feas": 36.1, "whs": 1.25, "wscore": 2.7, "ph": 8.05, "cscore": 20.0, "suit": 18.8, "mpa": null, "hflag": "Standard", "suith": 18.8, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "possible"}, {"name": "SANDAG", "lat": 32.9, "lon": -117.26, "vol": 0, "nev": 2, "src": "Corona Quarry (Representative)", "dist": 108.0, "feas": 0.0, "whs": 1.23, "wscore": 1.5, "ph": 8.05, "cscore": 20.0, "suit": 7.5, "mpa": null, "hflag": "Standard", "suith": 7.5, "slr_m": 0.91, "slr_hi": 1.97, "slr_risk": "critical", "diss": "possible"}];
+const allTiles = [{"id": 1, "file": "tiles/tile_01.png", "lat_s": 32.83937, "lat_n": 32.85522, "lon_w": -117.30397, "lon_e": -117.25409, "rendered": true}, {"id": 2, "file": "tiles/tile_02.png", "lat_s": 32.84528, "lat_n": 32.88005, "lon_w": -117.2678, "lon_e": -117.24487, "rendered": true}, {"id": 3, "file": "tiles/tile_03.png", "lat_s": 32.8716, "lat_n": 32.90726, "lon_w": -117.26058, "lon_e": -117.24494, "rendered": true}, {"id": 4, "file": "tiles/tile_04.png", "lat_s": 32.89796, "lat_n": 32.93533, "lon_w": -117.26439, "lon_e": -117.25008, "rendered": true}, {"id": 5, "file": "tiles/tile_05.png", "lat_s": 32.92615, "lat_n": 32.96129, "lon_w": -117.27241, "lon_e": -117.25456, "rendered": true}, {"id": 6, "file": "tiles/tile_06.png", "lat_s": 32.95238, "lat_n": 32.98664, "lon_w": -117.27749, "lon_e": -117.26368, "rendered": true}, {"id": 7, "file": "tiles/tile_07.png", "lat_s": 32.97788, "lat_n": 33.00963, "lon_w": -117.28307, "lon_e": -117.26802, "rendered": true}, {"id": 8, "file": "tiles/tile_08.png", "lat_s": 33.00094, "lat_n": 33.0345, "lon_w": -117.29291, "lon_e": -117.27483, "rendered": true}, {"id": 9, "file": "tiles/tile_09.png", "lat_s": 33.02495, "lat_n": 33.05594, "lon_w": -117.30374, "lon_e": -117.28343, "rendered": true}, {"id": 10, "file": "tiles/tile_10.png", "lat_s": 33.04694, "lat_n": 33.08035, "lon_w": -117.31496, "lon_e": -117.29465, "rendered": true}, {"id": 11, "file": "tile_11_preview.png", "lat_s": 33.07116, "lat_n": 33.10626, "lon_w": -117.32446, "lon_e": -117.30599, "rendered": false}, {"id": 12, "file": "tile_12_preview.png", "lat_s": 33.09686, "lat_n": 33.12997, "lon_w": -117.33465, "lon_e": -117.31504, "rendered": false}, {"id": 13, "file": "tile_13_preview.png", "lat_s": 33.12097, "lat_n": 33.15135, "lon_w": -117.35119, "lon_e": -117.3237, "rendered": false}, {"id": 14, "file": "tile_14_preview.png", "lat_s": 33.14159, "lat_n": 33.17313, "lon_w": -117.36797, "lon_e": -117.34054, "rendered": false}, {"id": 15, "file": "tile_15_preview.png", "lat_s": 33.16276, "lat_n": 33.1943, "lon_w": -117.38558, "lon_e": -117.35713, "rendered": false}, {"id": 16, "file": "tile_16_preview.png", "lat_s": 33.18377, "lat_n": 33.21455, "lon_w": -117.4057, "lon_e": -117.37474, "rendered": false}, {"id": 17, "file": "tile_17_preview.png", "lat_s": 33.20539, "lat_n": 33.23759, "lon_w": -117.42249, "lon_e": -117.39372, "rendered": false}, {"id": 18, "file": "tile_18_preview.png", "lat_s": 33.22687, "lat_n": 33.25923, "lon_w": -117.43992, "lon_e": -117.41189, "rendered": false}, {"id": 19, "file": "tile_19_preview.png", "lat_s": 33.24927, "lat_n": 33.28009, "lon_w": -117.45803, "lon_e": -117.42971, "rendered": false}, {"id": 20, "file": "tile_20_preview.png", "lat_s": 33.26958, "lat_n": 33.30039, "lon_w": -117.47441, "lon_e": -117.44722, "rendered": false}, {"id": 21, "file": "tile_21_preview.png", "lat_s": 33.29034, "lat_n": 33.31773, "lon_w": -117.49121, "lon_e": -117.46447, "rendered": false}, {"id": 22, "file": "tile_22_preview.png", "lat_s": 33.30851, "lat_n": 33.33624, "lon_w": -117.51076, "lon_e": -117.48119, "rendered": false}, {"id": 23, "file": "tile_23_preview.png", "lat_s": 33.32727, "lat_n": 33.35498, "lon_w": -117.53332, "lon_e": -117.49995, "rendered": false}, {"id": 24, "file": "tile_24_preview.png", "lat_s": 33.34526, "lat_n": 33.37113, "lon_w": -117.5585, "lon_e": -117.52301, "rendered": false}, {"id": 25, "file": "tile_25_preview.png", "lat_s": 33.36216, "lat_n": 33.38563, "lon_w": -117.58387, "lon_e": -117.54834, "rendered": false}, {"id": 26, "file": "tile_26_preview.png", "lat_s": 33.37615, "lat_n": 33.40101, "lon_w": -117.60597, "lon_e": -117.57384, "rendered": false}, {"id": 27, "file": "tile_27_preview.png", "lat_s": 33.39179, "lat_n": 33.42196, "lon_w": -117.6235, "lon_e": -117.59568, "rendered": false}, {"id": 28, "file": "tile_28_preview.png", "lat_s": 33.41223, "lat_n": 33.44122, "lon_w": -117.64455, "lon_e": -117.61388, "rendered": false}, {"id": 29, "file": "tile_29_preview.png", "lat_s": 33.43116, "lat_n": 33.45763, "lon_w": -117.66975, "lon_e": -117.63518, "rendered": false}, {"id": 30, "file": "tile_30_preview.png", "lat_s": 33.44812, "lat_n": 33.46605, "lon_w": -117.69872, "lon_e": -117.65978, "rendered": false}, {"id": 31, "file": "tile_31_preview.png", "lat_s": 33.45617, "lat_n": 33.46563, "lon_w": -117.72594, "lon_e": -117.68689, "rendered": false}];
+
+let colorField = "suit";
+let showCoverage = true;
+let showMPA = false;
+let showLabels = true;
+
+const W = 750, H = 850;
+
+const colorScales = {
+  suit: d3.scaleSequential(t => d3.interpolateRdYlGn(t)).domain([0, 70]),
+  feas: d3.scaleSequential(t => d3.interpolateRdYlGn(t)).domain([0, 100]),
+  wscore: d3.scaleSequential(t => d3.interpolateRdYlGn(t)).domain([0, 100]),
+  cscore: d3.scaleSequential(t => d3.interpolateRdYlGn(t)).domain([0, 100]),
+};
+const colorLabels = {
+  suit: "Final suitability",
+  feas: "Feasibility (volume + mineral proximity)",
+  wscore: "Wave energy (dissolution potential)",
+  cscore: "Chemistry (OA signal)",
+};
+
+const rScale = d3.scaleSqrt().domain([0, 57]).range([4, 14]);
+
+// SoCal zoom: Imperial Beach to north of Oceanside
+const proj = d3.geoMercator()
+  .center([-117.55, 33.15])
+  .scale(52000)
+  .translate([W / 2, H / 2]);
+
+const svg = d3.select("#map-container").append("svg")
+  .attr("viewBox", `0 0 ${W} ${H}`)
+  .attr("width", "100%");
+
+svg.append("rect").attr("width", W).attr("height", H).attr("fill", "#c8dff0").attr("rx", 10);
+
+const gCoast = svg.append("g");
+const gTileOutline = svg.append("g").attr("class", "tile-outlines");
+const gSites = svg.append("g").attr("class", "sites");
+const gLabels = svg.append("g").attr("class", "labels");
+
+const tip = document.getElementById("tip");
+
+function drawGradient() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 240; canvas.height = 12;
+  canvas.style.width = "100%"; canvas.style.height = "12px";
+  canvas.style.borderRadius = "3px";
+  const ctx = canvas.getContext("2d");
+  const scale = colorScales[colorField];
+  for (let i = 0; i < 240; i++) {
+    ctx.fillStyle = scale(scale.domain()[0] + (i / 240) * (scale.domain()[1] - scale.domain()[0]));
+    ctx.fillRect(i, 0, 1, 12);
+  }
+  const el = document.getElementById("legend-gradient");
+  el.innerHTML = "";
+  el.appendChild(canvas);
+  const d = scale.domain();
+  document.getElementById("legend-labels").innerHTML =
+    `<span>${d[0]}</span><span>${Math.round(d[1]/3)}</span><span>${Math.round(d[1]*2/3)}</span><span>${d[1]}</span>`;
+}
+drawGradient();
+
+d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json").then(us => {
+  const path = d3.geoPath(proj);
+  const ca = topojson.feature(us, us.objects.states).features
+    .filter(f => f.properties.name === "California");
+
+  gCoast.selectAll(".state").data(ca).join("path")
+    .attr("d", path).attr("fill", "#e8e3d8").attr("stroke", "#b0a898").attr("stroke-width", 0.8);
+
+  drawTiles();
+  drawSites();
+});
+
+const tileImgBase = "../../data/pngs/";
+const tilesWithPreviews = new Set(Array.from({length: 26}, (_, i) => i + 1));
+
+function openTileModal(d) {
+  if (!tilesWithPreviews.has(d.id)) return;
+  const padId = String(d.id).padStart(2, "0");
+  document.getElementById("tile-modal-title").textContent = `Tile ${d.id} — Hyperspectral Preview`;
+  document.getElementById("tile-modal-sub").textContent =
+    `${d.lat_s.toFixed(4)}°N – ${d.lat_n.toFixed(4)}°N, ${d.lon_w.toFixed(4)}°W – ${d.lon_e.toFixed(4)}°W`;
+  document.getElementById("tile-modal-img").src = tileImgBase + `tile_${padId}_preview.png`;
+  document.getElementById("tile-modal").classList.add("visible");
+}
+
+function closeTileModal(e) {
+  if (e.target.closest(".tile-modal-inner") && !e.target.closest(".tile-modal-close")) return;
+  document.getElementById("tile-modal").classList.remove("visible");
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") document.getElementById("tile-modal").classList.remove("visible");
+});
+
+function drawTiles() {
+  gTileOutline.selectAll("rect").data(allTiles, d => d.id).join("rect")
+    .attr("x", d => proj([d.lon_w, d.lat_n])[0])
+    .attr("y", d => proj([d.lon_w, d.lat_n])[1])
+    .attr("width", d => proj([d.lon_e, d.lat_s])[0] - proj([d.lon_w, d.lat_n])[0])
+    .attr("height", d => proj([d.lon_e, d.lat_s])[1] - proj([d.lon_w, d.lat_n])[1])
+    .attr("fill", d => tilesWithPreviews.has(d.id) ? "rgba(0,180,220,0.10)" : "rgba(0,180,220,0.04)")
+    .attr("stroke", d => tilesWithPreviews.has(d.id) ? "rgba(0,180,220,0.6)" : "rgba(0,180,220,0.3)")
+    .attr("stroke-width", 0.7)
+    .attr("stroke-dasharray", "4,3")
+    .style("display", showCoverage ? "block" : "none")
+    .style("pointer-events", showCoverage ? "all" : "none")
+    .style("cursor", d => tilesWithPreviews.has(d.id) ? "pointer" : "default")
+    .on("click", function(e, d) { openTileModal(d); })
+    .on("mouseover", function(e, d) {
+      if (!tilesWithPreviews.has(d.id)) return;
+      d3.select(this).attr("fill", "rgba(0,180,220,0.22)").attr("stroke-width", 1.5);
+    })
+    .on("mouseout", function(e, d) {
+      d3.select(this).attr("fill", tilesWithPreviews.has(d.id) ? "rgba(0,180,220,0.10)" : "rgba(0,180,220,0.04)")
+        .attr("stroke-width", 0.7);
+    });
+
+  gTileOutline.selectAll("text").data(allTiles, d => d.id).join("text")
+    .attr("x", d => proj([(d.lon_w + d.lon_e) / 2, (d.lat_s + d.lat_n) / 2])[0])
+    .attr("y", d => proj([(d.lon_w + d.lon_e) / 2, (d.lat_s + d.lat_n) / 2])[1])
+    .text(d => d.id)
+    .attr("font-size", "8px")
+    .attr("fill", "rgba(0,140,180,0.5)")
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "middle")
+    .style("pointer-events", "none")
+    .style("display", showCoverage ? "block" : "none");
+}
+
+function drawSites() {
+  const scale = colorScales[colorField];
+
+  gSites.selectAll("circle").data(sites, d => d.name).join("circle")
+    .attr("cx", d => proj([d.lon, d.lat])[0])
+    .attr("cy", d => proj([d.lon, d.lat])[1])
+    .attr("r", d => rScale(d.nev))
+    .attr("fill", d => scale(d[colorField]))
+    .attr("stroke", d => {
+      if (showMPA && d.mpa) return "#E65100";
+      return "#fff";
+    })
+    .attr("stroke-width", d => (showMPA && d.mpa) ? 2.5 : 1.2)
+    .attr("stroke-dasharray", d => (showMPA && d.mpa) ? "3,2" : "none")
+    .attr("opacity", 0.92)
+    .style("cursor", "pointer")
+    .on("mouseover", function(e, d) {
+      d3.select(this).attr("opacity", 1).attr("stroke-width", 3);
+      tip.style.opacity = 1;
+      tip.innerHTML = `<strong>${d.name}</strong><br>${colorLabels[colorField]}: ${d[colorField]}`;
+      tip.style.left = (e.offsetX + 14) + "px";
+      tip.style.top = (e.offsetY - 10) + "px";
+    })
+    .on("mousemove", function(e) {
+      tip.style.left = (e.offsetX + 14) + "px";
+      tip.style.top = (e.offsetY - 10) + "px";
+    })
+    .on("mouseout", function(e, d) {
+      d3.select(this).attr("opacity", 0.92).attr("stroke-width", (showMPA && d.mpa) ? 2.5 : 1.2);
+      tip.style.opacity = 0;
+    })
+    .on("click", function(e, d) { showDetail(d); });
+
+  // Labels
+  gLabels.selectAll("text").data(sites, d => d.name).join("text")
+    .attr("x", d => proj([d.lon, d.lat])[0] + rScale(d.nev) + 4)
+    .attr("y", d => proj([d.lon, d.lat])[1] + 3)
+    .text(d => d.name)
+    .attr("font-size", "9px")
+    .attr("fill", "#333")
+    .attr("stroke", "#fff")
+    .attr("stroke-width", 2.5)
+    .attr("paint-order", "stroke")
+    .attr("pointer-events", "none")
+    .style("display", showLabels ? "block" : "none");
+}
+
+function formatVol(v) {
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + "M m\u00B3";
+  if (v >= 1e3) return (v / 1e3).toFixed(0) + "K m\u00B3";
+  return v.toLocaleString() + " m\u00B3";
+}
+
+function scoreBar(label, value, max, color) {
+  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  return `<div class="score-row">
+    <div class="score-label">${label}: ${value}</div>
+    <div class="bar-bg"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+  </div>`;
+}
+
+function showDetail(d) {
+  document.getElementById("detail-empty").style.display = "none";
+  document.getElementById("detail").style.display = "block";
+  document.getElementById("detail-name").textContent = d.name;
+  document.getElementById("detail-scores").innerHTML =
+    scoreBar("Suitability", d.suit, 100, "#6366f1") +
+    scoreBar("Feasibility", d.feas, 100, "#8b5cf6") +
+    scoreBar("Wave energy", d.wscore, 100, "#ec4899") +
+    scoreBar("Chemistry", d.cscore, 100, "#f59e0b") +
+    (d.mpa ? scoreBar("With MPA penalty", d.suith, 100, "#ef4444") : "");
+  document.getElementById("detail-grid").innerHTML = `
+    <span class="label">Nourishment events</span><span class="val">${d.nev}</span>
+    <span class="label">Mineral source</span><span class="val">${d.src}</span>
+    <span class="label">Distance</span><span class="val">${d.dist} km</span>
+    <span class="label">Wave Hs</span><span class="val">${d.whs} m</span>
+    <span class="label">pH</span><span class="val">${d.ph}</span>
+    <span class="label">SLR (Int. 2100)</span><span class="val">${d.slr_m} m</span>
+    <span class="label">Dissolution</span><span class="val">${d.diss}</span>`;
+  document.getElementById("detail-mpa").innerHTML = d.mpa
+    ? `<div class="mpa-tag">MPA: ${d.mpa}</div>` : "";
+
+  // Data sources
+  document.getElementById("datasources-empty").style.display = "none";
+  const ds = document.getElementById("datasources");
+  ds.style.display = "block";
+  let sources = [
+    {name: "ASBPA Nourishment Database", desc: "Beach nourishment history & site locations"},
+    {name: "CA Mineral Sources (" + d.src.split("(")[0].trim() + ")", desc: "Mineral feedstock — " + d.dist + " km transport distance"},
+    {name: "CDIP Wave Buoy Network", desc: "Significant wave height (Hs = " + d.whs + " m)"},
+    {name: "NOAA OA Monitoring", desc: "Coastal pH (" + d.ph + ")"},
+    {name: "OPC/NOAA SLR Projections", desc: "Intermediate 2100: " + d.slr_m + " m, High: " + d.slr_hi + " m"},
+  ];
+  if (d.mpa) sources.push({name: "CDFW MPA Network", desc: d.mpa});
+  // Check if site is within hyperspectral coverage
+  const inCoverage = allTiles.some(t =>
+    d.lat >= t.lat_s && d.lat <= t.lat_n && d.lon >= t.lon_w && d.lon <= t.lon_e
+  );
+  if (inCoverage) sources.push({name: "MASS COAST Hyperspectral", desc: "Airborne imagery coverage (Oct 2023, 178 bands)"});
+
+  document.getElementById("ds-list").innerHTML = sources.map(s =>
+    `<div style="margin-bottom:4px"><span style="color:#1a1a1a;font-weight:500">${s.name}</span><br><span style="color:#888;font-size:10px">${s.desc}</span></div>`
+  ).join("");
+}
+
+function setColor(field) {
+  colorField = field;
+  const map = {"Suitability":"suit","Feasibility":"feas","Wave energy":"wscore","Chemistry":"cscore"};
+  document.querySelectorAll(".controls .btn").forEach(b => {
+    if (map[b.textContent] !== undefined) b.classList.toggle("active", map[b.textContent] === field);
+  });
+  document.getElementById("legend-title").textContent = colorLabels[field];
+  drawGradient();
+  drawSites();
+}
+
+function toggleCoverage() {
+  showCoverage = !showCoverage;
+  document.getElementById("btn-coverage").classList.toggle("active-green", showCoverage);
+  gTileOutline.selectAll("rect").style("display", showCoverage ? "block" : "none");
+  gTileOutline.selectAll("text").style("display", showCoverage ? "block" : "none");
+}
+
+function toggleMPA() {
+  showMPA = !showMPA;
+  document.getElementById("btn-mpa").classList.toggle("active-orange", showMPA);
+  drawSites();
+}
+
+function toggleLabels() {
+  showLabels = !showLabels;
+  document.getElementById("btn-labels").classList.toggle("active", showLabels);
+  gLabels.selectAll("text").style("display", showLabels ? "block" : "none");
+}
+
+let tilesOnly = false;
+function toggleTilesOnly() {
+  tilesOnly = !tilesOnly;
+  document.getElementById("btn-tilesonly").classList.toggle("active", tilesOnly);
+  if (tilesOnly) {
+    gSites.selectAll("circle").style("display", "none");
+    gLabels.selectAll("text").style("display", "none");
+    if (!showCoverage) { toggleCoverage(); }
+  } else {
+    gSites.selectAll("circle").style("display", "block");
+    gLabels.selectAll("text").style("display", showLabels ? "block" : "none");
+  }
+}
+
+// Init toggle states
+document.getElementById("btn-coverage").classList.add("active-green");
+document.getElementById("btn-labels").classList.add("active");
+</script>
+</body>
+</html>
